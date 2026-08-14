@@ -1,12 +1,3 @@
-import type {
-  ImageRequest,
-  ImageResult,
-  Provider,
-  ProviderConfig,
-  ProviderHealth,
-  VideoJob,
-  VideoRequest,
-} from '../seam.js';
 /**
  * Seedance 2.0 / 2.5 provider — the primary video model family.
  *
@@ -17,7 +8,19 @@ import type {
  * We auto-detect: if the response has a `data[].url`, we're done; if it has
  * an `id`, we poll until completion.
  */
-import { httpJson } from '../transport/http.js';
+import { TakeError } from '../errors.js';
+import type {
+  ImageRequest,
+  ImageResult,
+  Provider,
+  ProviderConfig,
+  ProviderHealth,
+  RetryPolicy,
+  VideoJob,
+  VideoRequest,
+} from '../seam.js';
+import { DEFAULT_RETRY_POLICY } from '../seam.js';
+import { transportJson } from '../transport/http.js';
 
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'seedance-2.0';
@@ -43,34 +46,47 @@ export class SeedanceProvider implements Provider {
   private readonly model: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  readonly retryPolicy: RetryPolicy;
 
   constructor(config: ProviderConfig) {
-    if (!config.apiKey) throw new Error('seedance provider requires an API key');
+    if (!config.apiKey) {
+      throw new TakeError({ code: 'MISSING_CREDENTIAL', message: 'seedance provider requires an API key' });
+    }
     this.apiKey = config.apiKey;
     this.model = config.model ?? process.env.TAKE_VIDEO_MODEL ?? DEFAULT_MODEL;
     this.baseUrl = (config.baseUrl ?? process.env.TAKE_VIDEO_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
+    this.retryPolicy = DEFAULT_RETRY_POLICY;
   }
 
-  private pollJob(jobId: string): Promise<VideoJob> {
+  private pollJob(jobId: string, signal?: AbortSignal): Promise<VideoJob> {
     return new Promise((resolve, reject) => {
       let polls = 0;
       const tick = async () => {
         polls += 1;
         if (polls > MAX_POLLS) {
-          reject(new Error(`seedance job ${jobId} did not finish within ${MAX_POLLS * POLL_INTERVAL_MS}ms`));
+          reject(
+            new TakeError({
+              code: 'TIMEOUT',
+              message: `seedance job ${jobId} did not finish within ${MAX_POLLS * POLL_INTERVAL_MS}ms`,
+            }),
+          );
           return;
         }
         try {
-          const status = await httpJson<VideoStatusResponse>(
+          const transportOptions: { headers: { authorization: string }; signal?: AbortSignal } = {
+            headers: { authorization: `Bearer ${this.apiKey}` },
+          };
+          if (signal !== undefined) transportOptions.signal = signal;
+          const { data: status } = await transportJson<VideoStatusResponse>(
             `${this.baseUrl}/videos/${jobId}`,
-            {
-              method: 'GET',
-            },
-            { headers: { authorization: `Bearer ${this.apiKey}` } },
+            { method: 'GET' },
+            transportOptions,
           );
 
           if (status.error?.message) {
-            reject(new Error(`seedance job ${jobId} failed: ${status.error.message}`));
+            reject(
+              new TakeError({ code: 'INTERNAL', message: `seedance job ${jobId} failed: ${status.error.message}` }),
+            );
             return;
           }
           const s = status.status ?? 'running';
@@ -81,7 +97,7 @@ export class SeedanceProvider implements Provider {
             return;
           }
           if (s === 'failed' || s === 'error') {
-            reject(new Error(`seedance job ${jobId} failed`));
+            reject(new TakeError({ code: 'INTERNAL', message: `seedance job ${jobId} failed` }));
             return;
           }
           setTimeout(tick, POLL_INTERVAL_MS);
@@ -121,16 +137,18 @@ export class SeedanceProvider implements Provider {
     if (req.aspectRatio) body.aspect_ratio = req.aspectRatio;
     if (req.resolution) body.resolution = req.resolution;
 
-    const created = await httpJson<VideoCreateResponse>(
+    const { data: created } = await transportJson<VideoCreateResponse>(
       `${this.baseUrl}/videos/generations`,
       {
         method: 'POST',
         body: JSON.stringify(body),
       },
-      { headers: { authorization: `Bearer ${this.apiKey}` } },
+      { headers: { authorization: `Bearer ${this.apiKey}` }, retryPolicy: this.retryPolicy },
     );
 
-    if (created.error?.message) throw new Error(`seedance error: ${created.error.message}`);
+    if (created.error?.message) {
+      throw new TakeError({ code: 'INTERNAL', message: `seedance error: ${created.error.message}` });
+    }
 
     // Synchronous-style response (proxy gateways).
     const url = created.data?.[0]?.url ?? created.data?.[0]?.video_url;
@@ -140,13 +158,15 @@ export class SeedanceProvider implements Provider {
       return job;
     }
 
-    if (!created.id) throw new Error('seedance returned neither a job id nor a result url');
+    if (!created.id) {
+      throw new TakeError({ code: 'EMPTY_RESPONSE', message: 'seedance returned neither a job id nor a result url' });
+    }
 
     return this.pollJob(created.id);
   }
 
   async generateImage(_req: ImageRequest): Promise<ImageResult> {
-    throw new Error('seedance does not generate images in take');
+    throw new TakeError({ code: 'UNSUPPORTED', message: 'seedance does not generate images in take' });
   }
 
   async health(): Promise<ProviderHealth> {

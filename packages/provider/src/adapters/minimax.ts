@@ -1,18 +1,21 @@
+/**
+ * Minimax H3 provider — the fallback video model.
+ * Uses Minimax's video-generation API (OpenAI-compatible shape when proxied;
+ * native Minimax endpoints otherwise). Polls async jobs.
+ */
+import { TakeError } from '../errors.js';
 import type {
   ImageRequest,
   ImageResult,
   Provider,
   ProviderConfig,
   ProviderHealth,
+  RetryPolicy,
   VideoJob,
   VideoRequest,
 } from '../seam.js';
-/**
- * Minimax H3 provider — the fallback video model.
- * Uses Minimax's video-generation API (OpenAI-compatible shape when proxied;
- * native Minimax endpoints otherwise). Polls async jobs.
- */
-import { httpJson } from '../transport/http.js';
+import { DEFAULT_RETRY_POLICY } from '../seam.js';
+import { transportJson } from '../transport/http.js';
 
 const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
 const DEFAULT_MODEL = 'minimax-h3';
@@ -39,12 +42,16 @@ export class MinimaxProvider implements Provider {
   private readonly model: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  readonly retryPolicy: RetryPolicy;
 
   constructor(config: ProviderConfig) {
-    if (!config.apiKey) throw new Error('minimax provider requires an API key');
+    if (!config.apiKey) {
+      throw new TakeError({ code: 'MISSING_CREDENTIAL', message: 'minimax provider requires an API key' });
+    }
     this.apiKey = config.apiKey;
     this.model = config.model ?? DEFAULT_MODEL;
     this.baseUrl = (config.baseUrl ?? process.env.TAKE_FALLBACK_VIDEO_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
+    this.retryPolicy = DEFAULT_RETRY_POLICY;
   }
 
   async generateVideo(req: VideoRequest): Promise<VideoJob> {
@@ -57,17 +64,20 @@ export class MinimaxProvider implements Provider {
     if (req.aspectRatio) body.aspect_ratio = req.aspectRatio;
     if (req.resolution) body.resolution = req.resolution;
 
-    const created = await httpJson<MinimaxCreateResponse>(
+    const { data: created } = await transportJson<MinimaxCreateResponse>(
       `${this.baseUrl}/videos/generations`,
       {
         method: 'POST',
         body: JSON.stringify(body),
       },
-      { headers: { authorization: `Bearer ${this.apiKey}` } },
+      { headers: { authorization: `Bearer ${this.apiKey}` }, retryPolicy: this.retryPolicy },
     );
 
     if (created.base_resp && created.base_resp.status_code !== 0 && created.base_resp.status_code !== 200) {
-      throw new Error(`minimax error: ${created.base_resp.status_msg ?? created.base_resp.status_code}`);
+      throw new TakeError({
+        code: 'INTERNAL',
+        message: `minimax error: ${created.base_resp.status_msg ?? created.base_resp.status_code}`,
+      });
     }
 
     const url = created.data?.[0]?.url;
@@ -78,20 +88,23 @@ export class MinimaxProvider implements Provider {
     }
 
     const jobId = created.id ?? created.video_id;
-    if (!jobId) throw new Error('minimax returned neither a job id nor a result url');
+    if (!jobId) {
+      throw new TakeError({ code: 'EMPTY_RESPONSE', message: 'minimax returned neither a job id nor a result url' });
+    }
 
     // Poll until done.
     for (let i = 0; i < MAX_POLLS; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-      const status = await httpJson<MinimaxStatusResponse>(
+      const { data: status } = await transportJson<MinimaxStatusResponse>(
         `${this.baseUrl}/videos/${jobId}`,
-        {
-          method: 'GET',
-        },
+        { method: 'GET' },
         { headers: { authorization: `Bearer ${this.apiKey}` } },
       );
       if (status.base_resp && status.base_resp.status_code !== 0 && status.base_resp.status_code !== 200) {
-        throw new Error(`minimax status error: ${status.base_resp.status_msg ?? status.base_resp.status_code}`);
+        throw new TakeError({
+          code: 'INTERNAL',
+          message: `minimax status error: ${status.base_resp.status_msg ?? status.base_resp.status_code}`,
+        });
       }
       const doneUrl = status.data?.[0]?.url ?? status.file_id;
       if (status.status === 'succeeded' || status.status === 'done' || doneUrl) {
@@ -100,14 +113,14 @@ export class MinimaxProvider implements Provider {
         return job;
       }
       if (status.status === 'failed' || status.status === 'error') {
-        throw new Error(`minimax job ${jobId} failed`);
+        throw new TakeError({ code: 'INTERNAL', message: `minimax job ${jobId} failed` });
       }
     }
-    throw new Error(`minimax job ${jobId} did not finish in time`);
+    throw new TakeError({ code: 'TIMEOUT', message: `minimax job ${jobId} did not finish in time` });
   }
 
   async generateImage(_req: ImageRequest): Promise<ImageResult> {
-    throw new Error('minimax does not generate images in take');
+    throw new TakeError({ code: 'UNSUPPORTED', message: 'minimax does not generate images in take' });
   }
 
   async health(): Promise<ProviderHealth> {

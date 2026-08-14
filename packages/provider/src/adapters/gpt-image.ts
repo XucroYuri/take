@@ -1,17 +1,20 @@
+/**
+ * GPT-image-2 provider — best-in-class production stills.
+ * Uses an OpenAI-compatible images API (`/v1/images/generations`).
+ */
+import { TakeError } from '../errors.js';
 import type {
   ImageRequest,
   ImageResult,
   Provider,
   ProviderConfig,
   ProviderHealth,
+  RetryPolicy,
   VideoJob,
   VideoRequest,
 } from '../seam.js';
-/**
- * GPT-image-2 provider — best-in-class production stills.
- * Uses an OpenAI-compatible images API (`/v1/images/generations`).
- */
-import { httpJson } from '../transport/http.js';
+import { DEFAULT_RETRY_POLICY } from '../seam.js';
+import { transportJson } from '../transport/http.js';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
@@ -26,16 +29,20 @@ export class GptImageProvider implements Provider {
   private readonly model: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  readonly retryPolicy: RetryPolicy;
 
   constructor(config: ProviderConfig) {
-    if (!config.apiKey) throw new Error('gpt-image provider requires an API key');
+    if (!config.apiKey) {
+      throw new TakeError({ code: 'MISSING_CREDENTIAL', message: 'gpt-image provider requires an API key' });
+    }
     this.apiKey = config.apiKey;
     this.model = config.model ?? 'gpt-image-2';
     this.baseUrl = (config.baseUrl ?? process.env.TAKE_IMAGE_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
+    this.retryPolicy = DEFAULT_RETRY_POLICY;
   }
 
   async generateImage(req: ImageRequest): Promise<ImageResult> {
-    const response = await httpJson<OpenAiImageResponse>(
+    const { data: response } = await transportJson<OpenAiImageResponse>(
       `${this.baseUrl}/images/generations`,
       {
         method: 'POST',
@@ -49,18 +56,23 @@ export class GptImageProvider implements Provider {
       },
       {
         headers: { authorization: `Bearer ${this.apiKey}` },
+        retryPolicy: this.retryPolicy,
       },
     );
 
-    if (response.error?.message) throw new Error(`gpt-image error: ${response.error.message}`);
+    if (response.error?.message) {
+      throw new TakeError({ code: 'INTERNAL', message: `gpt-image error: ${response.error.message}` });
+    }
     const item = response.data?.[0];
-    if (!item?.url) throw new Error('gpt-image returned no image url');
+    if (!item?.url) {
+      throw new TakeError({ code: 'EMPTY_RESPONSE', message: 'gpt-image returned no image url' });
+    }
 
     return { id: crypto.randomUUID(), url: item.url, contentType: 'image/png' };
   }
 
   async generateVideo(_req: VideoRequest): Promise<VideoJob> {
-    throw new Error('gpt-image does not generate video');
+    throw new TakeError({ code: 'UNSUPPORTED', message: 'gpt-image does not generate video' });
   }
 
   async health(): Promise<ProviderHealth> {
