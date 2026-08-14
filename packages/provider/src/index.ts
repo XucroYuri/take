@@ -73,6 +73,7 @@ export * from './seam.js';
 export * from './errors.js';
 export * from './router.js';
 export * from './adapters/mock.js';
+export * from './adapters/openai-compatible.js';
 export * from './adapters/gpt-image.js';
 export * from './adapters/seedance.js';
 export * from './adapters/minimax.js';

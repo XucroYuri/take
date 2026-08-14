@@ -1,130 +1,23 @@
+import type { ProviderConfig } from '../seam.js';
 /**
- * Minimax H3 provider — the fallback video model.
- * Uses Minimax's video-generation API (OpenAI-compatible shape when proxied;
- * native Minimax endpoints otherwise). Polls async jobs.
+ * Minimax H3 — a thin configuration over the OpenAI-compatible adapter.
+ * The only vendor-specific facts: base URL default, route name, and the
+ * default model. (Minimax exposes OpenAI-compatible endpoints; the native
+ * `base_resp` envelope is normalized by the universal adapter's parser.)
  */
-import { TakeError } from '../errors.js';
-import type {
-  ImageRequest,
-  ImageResult,
-  Provider,
-  ProviderConfig,
-  ProviderHealth,
-  RetryPolicy,
-  VideoJob,
-  VideoRequest,
-} from '../seam.js';
-import { DEFAULT_RETRY_POLICY } from '../seam.js';
-import { transportJson } from '../transport/http.js';
+import { OpenAiCompatibleAdapter } from './openai-compatible.js';
 
 const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
 const DEFAULT_MODEL = 'minimax-h3';
-const POLL_INTERVAL_MS = 3_000;
-const MAX_POLLS = 100;
 
-interface MinimaxCreateResponse {
-  id?: string;
-  video_id?: string;
-  data?: Array<{ url?: string }>;
-  base_resp?: { status_code?: number; status_msg?: string };
-}
-
-interface MinimaxStatusResponse {
-  status?: string;
-  file_id?: string;
-  data?: Array<{ url?: string }>;
-  base_resp?: { status_code?: number; status_msg?: string };
-}
-
-export class MinimaxProvider implements Provider {
-  readonly kind = ['video'] as const;
-  readonly name = 'minimax';
-  private readonly model: string;
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  readonly retryPolicy: RetryPolicy;
-
+export class MinimaxProvider extends OpenAiCompatibleAdapter {
   constructor(config: ProviderConfig) {
-    if (!config.apiKey) {
-      throw new TakeError({ code: 'MISSING_CREDENTIAL', message: 'minimax provider requires an API key' });
-    }
-    this.apiKey = config.apiKey;
-    this.model = config.model ?? DEFAULT_MODEL;
-    this.baseUrl = (config.baseUrl ?? process.env.TAKE_FALLBACK_VIDEO_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
-    this.retryPolicy = DEFAULT_RETRY_POLICY;
-  }
-
-  async generateVideo(req: VideoRequest): Promise<VideoJob> {
-    const body: Record<string, unknown> = {
-      model: this.model,
-      prompt: req.prompt,
-    };
-    if (req.firstFrameUrl) body.first_frame_image = req.firstFrameUrl;
-    if (req.durationSec) body.duration = req.durationSec;
-    if (req.aspectRatio) body.aspect_ratio = req.aspectRatio;
-    if (req.resolution) body.resolution = req.resolution;
-
-    const { data: created } = await transportJson<MinimaxCreateResponse>(
-      `${this.baseUrl}/videos/generations`,
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      },
-      { headers: { authorization: `Bearer ${this.apiKey}` }, retryPolicy: this.retryPolicy },
-    );
-
-    if (created.base_resp && created.base_resp.status_code !== 0 && created.base_resp.status_code !== 200) {
-      throw new TakeError({
-        code: 'INTERNAL',
-        message: `minimax error: ${created.base_resp.status_msg ?? created.base_resp.status_code}`,
-      });
-    }
-
-    const url = created.data?.[0]?.url;
-    if (url) {
-      const job: VideoJob = { id: created.id ?? crypto.randomUUID(), status: 'done' };
-      job.url = url;
-      return job;
-    }
-
-    const jobId = created.id ?? created.video_id;
-    if (!jobId) {
-      throw new TakeError({ code: 'EMPTY_RESPONSE', message: 'minimax returned neither a job id nor a result url' });
-    }
-
-    // Poll until done.
-    for (let i = 0; i < MAX_POLLS; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-      const { data: status } = await transportJson<MinimaxStatusResponse>(
-        `${this.baseUrl}/videos/${jobId}`,
-        { method: 'GET' },
-        { headers: { authorization: `Bearer ${this.apiKey}` } },
-      );
-      if (status.base_resp && status.base_resp.status_code !== 0 && status.base_resp.status_code !== 200) {
-        throw new TakeError({
-          code: 'INTERNAL',
-          message: `minimax status error: ${status.base_resp.status_msg ?? status.base_resp.status_code}`,
-        });
-      }
-      const doneUrl = status.data?.[0]?.url ?? status.file_id;
-      if (status.status === 'succeeded' || status.status === 'done' || doneUrl) {
-        const job: VideoJob = { id: jobId, status: 'done' };
-        if (typeof doneUrl === 'string') job.url = doneUrl;
-        return job;
-      }
-      if (status.status === 'failed' || status.status === 'error') {
-        throw new TakeError({ code: 'INTERNAL', message: `minimax job ${jobId} failed` });
-      }
-    }
-    throw new TakeError({ code: 'TIMEOUT', message: `minimax job ${jobId} did not finish in time` });
-  }
-
-  async generateImage(_req: ImageRequest): Promise<ImageResult> {
-    throw new TakeError({ code: 'UNSUPPORTED', message: 'minimax does not generate images in take' });
-  }
-
-  async health(): Promise<ProviderHealth> {
-    const start = Date.now();
-    return { ok: true, provider: `${this.name}:${this.model}`, latencyMs: Date.now() - start };
+    super({
+      provider: 'minimax',
+      kind: 'video',
+      model: config.model ?? process.env.TAKE_FALLBACK_VIDEO_MODEL ?? DEFAULT_MODEL,
+      apiKey: config.apiKey ?? process.env.TAKE_FALLBACK_VIDEO_API_KEY ?? '',
+      baseUrl: (config.baseUrl ?? process.env.TAKE_FALLBACK_VIDEO_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, ''),
+    });
   }
 }
