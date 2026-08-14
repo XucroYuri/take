@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { parseStoryboardMarkdown, projectPaths, validateProjectConfig, validateStoryboardFull } from '@take-ai/core';
+import { parseStoryboardMarkdown, projectPaths, validateStoryboardFull } from '@take-ai/core';
+import { loadConfig } from '@take-ai/provider';
 
 export interface ValidateOutcome {
   ok: boolean;
@@ -34,10 +35,16 @@ export async function validateFile(file: string | undefined, cwd: string): Promi
   return { ok: issues.length === 0, issues, warnings, path: target };
 }
 
-/** Validate take.config.json. */
+/** Validate take.config.json (v1 or v2; v1 is auto-migrated). */
 export async function validateConfig(cwd: string): Promise<ValidateOutcome> {
   const paths = projectPaths(cwd);
   const raw = await readFile(paths.config, 'utf8');
-  const issues = validateProjectConfig(JSON.parse(raw) as unknown);
-  return { ok: issues.length === 0, issues, warnings: [], path: paths.config };
+  const data = JSON.parse(raw) as unknown;
+  const { result, issues } = loadConfig(data);
+  const warnings: string[] = [];
+  if (result?.migrated) {
+    warnings.push('config is v1 — automatically migrated to v2 on load; consider saving the migrated form.');
+    warnings.push(...result.notes);
+  }
+  return { ok: issues.length === 0, issues, warnings, path: paths.config };
 }

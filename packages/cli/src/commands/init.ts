@@ -1,28 +1,35 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { projectPaths } from '@take-ai/core';
-import type { ProjectConfig } from '@take-ai/core';
+import type { TakeConfigV2 } from '@take-ai/provider';
 
-const DEFAULT_CONFIG: ProjectConfig = {
-  name: 'my-film',
-  aspectRatio: '16:9',
-  style: '',
-  image: {
-    provider: 'gpt-image',
-    model: 'gpt-image-2',
+const DEFAULT_CONFIG: TakeConfigV2 = {
+  version: 2,
+  providers: {
+    image: [
+      {
+        id: 'gpt-image',
+        adapter: 'gpt-image',
+        apiKeyEnv: 'TAKE_IMAGE_API_KEY',
+        model: 'gpt-image-2',
+      },
+    ],
+    video: [
+      {
+        id: 'seedance',
+        adapter: 'seedance',
+        apiKeyEnv: 'TAKE_VIDEO_API_KEY',
+        model: 'seedance-2.5',
+      },
+      {
+        id: 'minimax',
+        adapter: 'minimax',
+        apiKeyEnv: 'TAKE_FALLBACK_VIDEO_API_KEY',
+        model: 'minimax-h3',
+      },
+    ],
   },
-  video: {
-    provider: 'seedance',
-    model: 'seedance-2.5',
-    fallback: {
-      provider: 'minimax',
-      model: 'minimax-h3',
-    },
-  },
-  render: {
-    imageSize: '1536x1024',
-    videoDurationSec: 5,
-    videoResolution: '1080p',
+  runtime: {
     concurrency: 2,
   },
 };
@@ -37,7 +44,7 @@ export async function initProject(
   await mkdir(paths.assetsVideos, { recursive: true });
 
   await writeFile(paths.script, `# ${name}\n\n<!-- 把剧本写在这里，然后让 Agent 把它做成 Take 分镜。 -->\n`, 'utf8');
-  await writeFile(paths.config, `${JSON.stringify({ ...DEFAULT_CONFIG, name }, null, 2)}\n`, 'utf8');
+  await writeFile(paths.config, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`, 'utf8');
   await writeFile(
     paths.shots,
     `${JSON.stringify({ title: name, aspectRatio: '16:9', source: 'agent', shots: [] }, null, 2)}\n`,
