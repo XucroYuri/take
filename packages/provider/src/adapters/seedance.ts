@@ -1,3 +1,12 @@
+import type {
+  ImageRequest,
+  ImageResult,
+  Provider,
+  ProviderConfig,
+  ProviderHealth,
+  VideoJob,
+  VideoRequest,
+} from '../seam.js';
 /**
  * Seedance 2.0 / 2.5 provider — the primary video model family.
  *
@@ -8,16 +17,7 @@
  * We auto-detect: if the response has a `data[].url`, we're done; if it has
  * an `id`, we poll until completion.
  */
-import { httpJson } from './http.js';
-import type {
-  ImageRequest,
-  ImageResult,
-  Provider,
-  ProviderConfig,
-  ProviderHealth,
-  VideoJob,
-  VideoRequest,
-} from './types.js';
+import { httpJson } from '../transport/http.js';
 
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'seedance-2.0';

@@ -1,8 +1,3 @@
-/**
- * GPT-image-2 provider — best-in-class production stills.
- * Uses an OpenAI-compatible images API (`/v1/images/generations`).
- */
-import { httpJson } from './http.js';
 import type {
   ImageRequest,
   ImageResult,
@@ -11,7 +6,12 @@ import type {
   ProviderHealth,
   VideoJob,
   VideoRequest,
-} from './types.js';
+} from '../seam.js';
+/**
+ * GPT-image-2 provider — best-in-class production stills.
+ * Uses an OpenAI-compatible images API (`/v1/images/generations`).
+ */
+import { httpJson } from '../transport/http.js';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 

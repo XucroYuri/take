@@ -6,12 +6,12 @@
  *   TAKE_VIDEO_API_KEY / TAKE_VIDEO_BASE_URL / TAKE_VIDEO_MODEL   (seedance)
  *   TAKE_FALLBACK_VIDEO_API_KEY / TAKE_FALLBACK_VIDEO_MODEL       (minimax)
  */
-import { GptImageProvider } from './gpt-image.js';
-import { MinimaxProvider } from './minimax.js';
-import { MockProvider } from './mock.js';
+import { GptImageProvider } from './adapters/gpt-image.js';
+import { MinimaxProvider } from './adapters/minimax.js';
+import { MockProvider } from './adapters/mock.js';
+import { SeedanceProvider } from './adapters/seedance.js';
 import { ProviderRouter } from './router.js';
-import { SeedanceProvider } from './seedance.js';
-import type { Provider, ProviderConfig } from './types.js';
+import type { Provider, ProviderConfig } from './seam.js';
 
 /** Build a ProviderConfig with only defined fields (respects exactOptionalPropertyTypes). */
 function configWith(provider: string, overrides: Record<string, unknown>): ProviderConfig {
@@ -69,9 +69,10 @@ export function createDefaultRouter(): ProviderRouter {
   });
 }
 
-export * from './types.js';
+export * from './seam.js';
+export * from './errors.js';
 export * from './router.js';
-export * from './mock.js';
-export * from './gpt-image.js';
-export * from './seedance.js';
-export * from './minimax.js';
+export * from './adapters/mock.js';
+export * from './adapters/gpt-image.js';
+export * from './adapters/seedance.js';
+export * from './adapters/minimax.js';

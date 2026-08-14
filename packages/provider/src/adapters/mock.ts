@@ -11,7 +11,7 @@ import type {
   ProviderHealth,
   VideoJob,
   VideoRequest,
-} from './types.js';
+} from '../seam.js';
 
 export class MockProvider implements Provider {
   readonly kind: 'image' | 'video' | readonly ['image', 'video'];

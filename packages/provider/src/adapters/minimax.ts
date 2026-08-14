@@ -1,9 +1,3 @@
-/**
- * Minimax H3 provider — the fallback video model.
- * Uses Minimax's video-generation API (OpenAI-compatible shape when proxied;
- * native Minimax endpoints otherwise). Polls async jobs.
- */
-import { httpJson } from './http.js';
 import type {
   ImageRequest,
   ImageResult,
@@ -12,7 +6,13 @@ import type {
   ProviderHealth,
   VideoJob,
   VideoRequest,
-} from './types.js';
+} from '../seam.js';
+/**
+ * Minimax H3 provider — the fallback video model.
+ * Uses Minimax's video-generation API (OpenAI-compatible shape when proxied;
+ * native Minimax endpoints otherwise). Polls async jobs.
+ */
+import { httpJson } from '../transport/http.js';
 
 const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
 const DEFAULT_MODEL = 'minimax-h3';

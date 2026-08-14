@@ -3,7 +3,7 @@
  * provider, and falls back to alternates on failure. Model IDs never leak
  * into business code — they are router config.
  */
-import type { ImageRequest, ImageResult, Provider, ProviderHealth, VideoJob, VideoRequest } from './types.js';
+import type { ImageRequest, ImageResult, Provider, ProviderHealth, VideoJob, VideoRequest } from './seam.js';
 
 export interface RouterConfig {
   image?: {
