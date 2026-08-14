@@ -27,5 +27,8 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
+  },
+  "take": {
+    "invariant": "every registered provider route is retrievable via ProviderSeam.get and removable via its disposer"
   }
 }

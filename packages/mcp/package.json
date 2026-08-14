@@ -31,5 +31,8 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
+  },
+  "take": {
+    "invariant": "every tool call returns a CallToolResult; unknown tools return isError"
   }
 }

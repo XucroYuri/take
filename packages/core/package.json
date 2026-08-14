@@ -25,5 +25,8 @@
   "devDependencies": {
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
+  },
+  "take": {
+    "invariant": "domain models validate through zod schemas before serialization (validateStoryboardFull rejects invalid input)"
   }
 }

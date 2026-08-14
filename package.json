@@ -17,7 +17,8 @@
     "format": "biome format --write .",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
-    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "verify:contracts": "node scripts/verify-package-contracts.ts",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm verify:contracts",
     "prepare": "husky"
   },
   "devDependencies": {
