@@ -71,6 +71,9 @@ export function createDefaultRouter(): ProviderRouter {
 
 export * from './seam.js';
 export * from './errors.js';
+export * from './jobs.js';
+export * from './jobs-local.js';
+export * from './orchestration.js';
 export * from './router.js';
 export * from './adapters/mock.js';
 export * from './adapters/openai-compatible.js';

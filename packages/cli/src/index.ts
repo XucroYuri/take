@@ -41,11 +41,46 @@ program
   .description('render approved shots through the provider router')
   .argument('<stage>', 'images | video')
   .option('--mock', 'use the mock provider (no API keys required)')
-  .action(async (stage: string, opts: { mock?: boolean }) => {
+  .option('--resume', 'skip shots whose input hash matches a completed job')
+  .option('-c, --concurrency <n>', 'parallel jobs (default 2)', '2')
+  .action(async (stage: string, opts: { mock?: boolean; resume?: boolean; concurrency?: string }) => {
+    const generateOptions: {
+      mock: boolean;
+      resume: boolean;
+      concurrency: number;
+      root: string;
+    } = { mock: false, resume: false, concurrency: Number(opts.concurrency), root: process.cwd() };
+    if (opts.mock === true) generateOptions.mock = true;
+    if (opts.resume === true) generateOptions.resume = true;
     const outputs =
-      stage === 'video' ? await generateVideos(process.cwd(), opts) : await generateImages(process.cwd(), opts);
-    console.log(`✓ generated ${outputs.length} ${stage}`);
+      stage === 'video'
+        ? await generateVideos(process.cwd(), generateOptions)
+        : await generateImages(process.cwd(), generateOptions);
+    console.log(`✓ generated ${outputs.length} ${stage} job(s)`);
     for (const out of outputs) console.log(`  ${out}`);
+  });
+
+program
+  .command('jobs')
+  .description('list background jobs from the .take/jobs.json event log')
+  .action(async () => {
+    const { JobEventLog } = await import('@take-ai/provider');
+    const log = new JobEventLog({ root: process.cwd() });
+    await log.load();
+    const events = log.all();
+    if (events.length === 0) {
+      console.log('no jobs recorded');
+      return;
+    }
+    for (const event of events) {
+      const suffix =
+        event.type === 'done'
+          ? ' ✓'
+          : event.type === 'failed' || event.type === 'cancelled'
+            ? ` ✗ ${event.error ?? ''}`
+            : '';
+      console.log(`${event.at}  ${event.kind} ${event.jobId}  ${event.type}${suffix}`);
+    }
   });
 
 program
