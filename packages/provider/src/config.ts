@@ -11,11 +11,24 @@ import { OpenAiCompatibleAdapter } from './adapters/openai-compatible.js';
 import type { CapabilityRegistry } from './capabilities.js';
 import { TakeError } from './errors.js';
 import { ProviderRouter } from './router.js';
+import type { RetryPolicy } from './seam.js';
 import type { Provider } from './seam.js';
 
 // ---------------------------------------------------------------------------
 // v2 schema
 // ---------------------------------------------------------------------------
+
+export const retryPolicySchema = z.object({
+  mode: z.enum(['normal', 'always']).optional(),
+  maxRetries: z.number().int().nonnegative().optional(),
+  backoff: z
+    .object({
+      initialDelayMs: z.number().nonnegative().optional(),
+      maxDelayMs: z.number().nonnegative().optional(),
+      jitterRatio: z.number().nonnegative().optional(),
+    })
+    .optional(),
+});
 
 export const providerEntrySchema = z.object({
   /** Stable entry id for patching, e.g. 'openai'. */
@@ -32,6 +45,8 @@ export const providerEntrySchema = z.object({
   weight: z.number().positive().optional(),
   /** Poll interval for async jobs (ms); adapter default when omitted. */
   pollIntervalMs: z.number().positive().optional(),
+  /** Per-entry retry policy override (wins over runtime.maxRetries). */
+  retryPolicy: retryPolicySchema.optional(),
 });
 
 export const runtimeConfigSchema = z.object({
@@ -202,7 +217,11 @@ export interface BuildRouterOptions {
   env?: Record<string, string | undefined>;
   capabilities?: CapabilityRegistry;
   /** Override adapter construction (tests inject mocks). */
-  buildAdapter?: (entry: ProviderEntry, env: Record<string, string | undefined>) => Provider;
+  buildAdapter?: (
+    entry: ProviderEntry,
+    env: Record<string, string | undefined>,
+    runtimeRetry?: { maxRetries?: number },
+  ) => Provider;
 }
 
 /** Resolve an entry's credential from its apiKeyEnv reference. */
@@ -218,13 +237,51 @@ export function resolveEntryKey(entry: ProviderEntry, env: Record<string, string
   return value;
 }
 
+/**
+ * Resolve a provider's retry policy: entry-level override wins; else
+ * runtime.maxRetries layers onto the adapter default; else undefined
+ * (adapter default applies).
+ */
+export function resolveRetryPolicy(
+  entry: ProviderEntry,
+  runtimeRetry?: { maxRetries?: number },
+): RetryPolicy | undefined {
+  if (entry.retryPolicy !== undefined) {
+    return {
+      mode: entry.retryPolicy.mode ?? 'normal',
+      maxRetries: entry.retryPolicy.maxRetries ?? 2,
+      backoff: {
+        initialDelayMs: entry.retryPolicy.backoff?.initialDelayMs ?? 500,
+        maxDelayMs: entry.retryPolicy.backoff?.maxDelayMs ?? 10_000,
+        jitterRatio: entry.retryPolicy.backoff?.jitterRatio ?? 0.1,
+      },
+    };
+  }
+  if (runtimeRetry?.maxRetries !== undefined) {
+    return {
+      mode: 'normal',
+      maxRetries: runtimeRetry.maxRetries,
+      backoff: { initialDelayMs: 500, maxDelayMs: 10_000, jitterRatio: 0.1 },
+    };
+  }
+  return undefined;
+}
+
 /** Build a Provider from a config entry (the only place adapters are chosen). */
-export function buildProvider(entry: ProviderEntry, env: Record<string, string | undefined>): Provider {
+export function buildProvider(
+  entry: ProviderEntry,
+  env: Record<string, string | undefined>,
+  runtimeRetry?: { maxRetries?: number },
+): Provider {
   if (entry.adapter === 'mock') {
     return new MockProvider({ provider: entry.id, kind: ['image', 'video'] });
   }
   const apiKey = resolveEntryKey(entry, env);
   const base = { apiKey };
+  // Resolve retry policy: entry-level override wins; else runtime.maxRetries
+  // layers onto the adapter default; else adapter default.
+  const retryPolicy = resolveRetryPolicy(entry, runtimeRetry);
+  const configBase = retryPolicy === undefined ? base : { ...base, retryPolicy };
   switch (entry.adapter) {
     case 'gpt-image':
       return new OpenAiCompatibleAdapter({
@@ -232,7 +289,7 @@ export function buildProvider(entry: ProviderEntry, env: Record<string, string |
         kind: 'image',
         baseUrl: entry.baseUrl ?? 'https://api.openai.com/v1',
         model: entry.model,
-        ...base,
+        ...configBase,
       });
     case 'seedance':
       return new OpenAiCompatibleAdapter({
@@ -240,7 +297,7 @@ export function buildProvider(entry: ProviderEntry, env: Record<string, string |
         kind: 'video',
         baseUrl: entry.baseUrl ?? 'https://ark.cn-beijing.volces.com/api/v3',
         model: entry.model,
-        ...base,
+        ...configBase,
       });
     case 'minimax':
       return new OpenAiCompatibleAdapter({
@@ -248,7 +305,7 @@ export function buildProvider(entry: ProviderEntry, env: Record<string, string |
         kind: 'video',
         baseUrl: entry.baseUrl ?? 'https://api.minimaxi.com/v1',
         model: entry.model,
-        ...base,
+        ...configBase,
       });
     case 'openai-compatible':
       return new OpenAiCompatibleAdapter({
@@ -256,7 +313,7 @@ export function buildProvider(entry: ProviderEntry, env: Record<string, string |
         kind: ['image', 'video'],
         baseUrl: entry.baseUrl ?? 'https://api.openai.com/v1',
         model: entry.model,
-        ...base,
+        ...configBase,
       });
     default:
       // Exhaustive over the adapter enum; unreachable.
@@ -268,6 +325,8 @@ export function buildProvider(entry: ProviderEntry, env: Record<string, string |
 export function buildRouterFromConfig(config: TakeConfigV2, options: BuildRouterOptions = {}): ProviderRouter {
   const env = options.env ?? process.env;
   const build = options.buildAdapter ?? buildProvider;
+  const runtimeRetry: { maxRetries?: number } = {};
+  if (config.runtime?.maxRetries !== undefined) runtimeRetry.maxRetries = config.runtime.maxRetries;
   const routerConfig: ConstructorParameters<typeof ProviderRouter>[0] = {};
   if (options.capabilities !== undefined) routerConfig.capabilities = options.capabilities;
 
@@ -276,8 +335,8 @@ export function buildRouterFromConfig(config: TakeConfigV2, options: BuildRouter
     const primary = entries[0];
     if (primary !== undefined) {
       routerConfig.image = {
-        primary: build(primary, env),
-        fallbacks: entries.slice(1).map((e: ProviderEntry) => build(e, env)),
+        primary: build(primary, env, runtimeRetry),
+        fallbacks: entries.slice(1).map((e: ProviderEntry) => build(e, env, runtimeRetry)),
       };
     }
   }
@@ -286,8 +345,8 @@ export function buildRouterFromConfig(config: TakeConfigV2, options: BuildRouter
     const primary = entries[0];
     if (primary !== undefined) {
       routerConfig.video = {
-        primary: build(primary, env),
-        fallbacks: entries.slice(1).map((e: ProviderEntry) => build(e, env)),
+        primary: build(primary, env, runtimeRetry),
+        fallbacks: entries.slice(1).map((e: ProviderEntry) => build(e, env, runtimeRetry)),
       };
     }
   }

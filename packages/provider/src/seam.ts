@@ -159,6 +159,20 @@ export class ProviderSeam {
     return adapter;
   }
 
+  /**
+   * The retry policy captured at registration for a provider route
+   * (dsh `providerRetryPolicy` semantics). Defaults resolve to the
+   * DEFAULT_RETRY_POLICY when the adapter carries none.
+   */
+  providerRetryPolicy(provider: string): RetryPolicy {
+    const adapter = this.adapters.get(provider);
+    if (!adapter) {
+      throw new TakeError({ code: 'NO_ADAPTER', message: `no adapter registered for provider: ${provider}` });
+    }
+    const policy = (adapter as Provider & { retryPolicy?: RetryPolicy }).retryPolicy;
+    return policy ?? DEFAULT_RETRY_POLICY;
+  }
+
   has(provider: string): boolean {
     return this.adapters.has(provider);
   }
