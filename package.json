@@ -1,0 +1,47 @@
+{
+  "name": "take",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Take your script to the screen. Agent-first storyboard & AI film production toolkit — works inside Claude Code, Codex, OpenCode and zcode.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@10.34.4",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r build && pnpm -r typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "husky": "^9.1.7",
+    "typescript": "^5.8.3"
+  },
+  "keywords": [
+    "storyboard",
+    "storyboarding",
+    "screenplay",
+    "script",
+    "film",
+    "video-generation",
+    "image-generation",
+    "seedance",
+    "minimax",
+    "gpt-image",
+    "agent",
+    "claude-code",
+    "codex",
+    "opencode",
+    "mcp",
+    "ai-filmmaking",
+    "previsualization"
+  ]
+}
