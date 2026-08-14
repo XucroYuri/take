@@ -16,10 +16,17 @@ import type {
 export class MockProvider implements Provider {
   readonly kind: 'image' | 'video' | readonly ['image', 'video'];
   readonly name: string;
+  readonly model?: string;
 
-  constructor(config: Partial<ProviderConfig> & { kind?: 'image' | 'video' | readonly ['image', 'video'] } = {}) {
+  constructor(
+    config: Partial<ProviderConfig> & {
+      kind?: 'image' | 'video' | readonly ['image', 'video'];
+      model?: string;
+    } = {},
+  ) {
     this.name = config.provider ?? 'mock';
     this.kind = config.kind ?? ['image', 'video'];
+    if (config.model !== undefined) this.model = config.model;
   }
 
   async generateImage(req: ImageRequest): Promise<ImageResult> {

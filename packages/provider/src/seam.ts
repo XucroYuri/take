@@ -90,6 +90,8 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 export interface Provider {
   readonly kind: ProviderKind | readonly ProviderKind[];
   readonly name: string;
+  /** The model this adapter instance serves (undefined = unknown capacity). */
+  readonly model?: string;
   generateImage(req: ImageRequest): Promise<ImageResult>;
   generateVideo(req: VideoRequest): Promise<VideoJob>;
   health(): Promise<ProviderHealth>;

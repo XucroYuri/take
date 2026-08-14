@@ -71,6 +71,7 @@ export function createDefaultRouter(): ProviderRouter {
 
 export * from './seam.js';
 export * from './errors.js';
+export * from './capabilities.js';
 export * from './jobs.js';
 export * from './jobs-local.js';
 export * from './orchestration.js';

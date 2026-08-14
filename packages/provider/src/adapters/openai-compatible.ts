@@ -62,9 +62,9 @@ interface VideoStatusResponse {
 export class OpenAiCompatibleAdapter implements Provider {
   readonly kind: 'image' | 'video' | readonly ['image', 'video'];
   readonly name: string;
+  readonly model: string;
   private readonly baseUrl: string;
   private readonly apiKey: string;
-  private readonly model: string;
   private readonly pollIntervalMs: number;
   private readonly maxPolls: number;
   readonly retryPolicy: RetryPolicy;
