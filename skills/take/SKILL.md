@@ -1,12 +1,12 @@
 ---
 name: take
 description: >
-  Agent-first storyboard & AI film production toolkit. Turns a script into
-  beat → shot → storyboard → rendered stills/video, using the agent's own
-  model for text analysis (no extra LLM API needed) and take's provider
-  router for image (GPT-image-2) and video (Seedance 2.x, fallback Minimax H3)
-  generation. Use when the user asks to 分镜 (storyboard), make a shot list,
-  turn a script into images/video, plan a film's shots, or render a scene.
+  Agent 原生的分镜与 AI 影视生产工具包（Agent-first storyboard & AI film
+  production toolkit）。把剧本转成 beat（节拍）→ shot（镜头）→ storyboard
+  （分镜）→ 分镜图/成片视频。文本分析默认使用 Agent 工具自身的模型能力
+  （无需额外 LLM API）；图像生成走 GPT-image-2，视频生成走 Seedance 2.x
+  （备选 Minimax H3）。当用户要求分镜（storyboard）、制作镜头列表（shot
+  list）、把剧本转成图像/视频、规划镜头、或渲染某个场景时使用。
   Triggers: 分镜, storyboard, shot list, 镜头, 剧本转视频, AI film production.
 ---
 
