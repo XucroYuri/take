@@ -1,13 +1,25 @@
 ---
 name: take
 description: >
-  Agent 原生的分镜与 AI 影视生产工具包（Agent-first storyboard & AI film
-  production toolkit）。把剧本转成 beat（节拍）→ shot（镜头）→ storyboard
-  （分镜）→ 分镜图/成片视频。文本分析默认使用 Agent 工具自身的模型能力
-  （无需额外 LLM API）；图像生成走 GPT-image-2，视频生成走 Seedance 2.x
-  （备选 Minimax H3）。当用户要求分镜（storyboard）、制作镜头列表（shot
-  list）、把剧本转成图像/视频、规划镜头、或渲染某个场景时使用。
-  Triggers: 分镜, storyboard, shot list, 镜头, 剧本转视频, AI film production.
+  Agent 原生的影视分镜生产工具包（storyboard & AI film production toolkit）。
+  把剧本转成 beat（节拍）→ shot（镜头）→ storyboard（分镜）→ 分镜图/视频素材，
+  并管理 take 项目文件（script.md / shots.json / storyboard.md / take.config.json）。
+  文本分析用 Agent 自身模型（无需额外 LLM API）；图像生成走 GPT-image-2，
+  视频生成走 Seedance 2.x（备选 Minimax H3）。
+
+  何时使用（USE）：
+  - 用户提供剧本/故事/脚本，要求分镜、镜头列表、九宫格、分镜图或视频素材
+  - 要求校验、导出、续跑、查看 take 项目（shots.json、storyboard.md、take jobs）
+  - 用户明确提到 take / 分镜工具 / 把剧本做成画面
+
+  何时不使用（DO NOT USE）：
+  - 仅讨论剧本、镜头语言、编剧理论（无分镜产出要求）——知识咨询，不走文件管线
+  - 通用图片/视频生成（无剧本、无镜头规划，如"生成一张猫图"）
+  - 完整成片剪辑/后期制作（take 产出分镜与素材，不做最终剪辑）
+  - 与影视生产无关的任务（代码、文档、翻译等）
+
+  Triggers: 分镜, storyboard, shot list, 镜头, 九宫格, 剧本转视频
+  Excludes: 剧本理论, 编剧知识, 通用画图, 视频剪辑, 后期制作
 ---
 
 # take — 把剧本送上银幕
