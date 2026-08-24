@@ -9,8 +9,8 @@
  *    OR a justified allowlist entry.
  * 3. Every package has an index.ts aggregate export (unless justified).
  */
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
