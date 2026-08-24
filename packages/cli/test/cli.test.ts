@@ -103,8 +103,9 @@ describe('take generate (mock)', () => {
     await fs.writeFile(join(root, 'shots.json'), JSON.stringify(shots));
     const outputs = await generateImages(root, { mock: true, concurrency: 2, resume: false, root });
     expect(outputs).toHaveLength(1);
-    expect(outputs[0]).toContain('take-image-1:done');
-    await expect(readFile(join(root, 'assets', 'images', 'shot-001.png'), 'utf8')).resolves.toContain('mock://');
+    expect(outputs[0]).toMatchObject({ shotId: 'shot-001', status: 'done' });
+    expect(outputs[0]?.assetPath).toContain('shot-001.png');
+    await expect(fs.readFile(join(root, 'assets', 'images', 'shot-001.png'), 'utf8')).resolves.toContain('mock://');
     await rm(root, { recursive: true, force: true });
   });
 
@@ -135,8 +136,9 @@ describe('take generate (mock)', () => {
     await fs.writeFile(join(root, 'shots.json'), JSON.stringify(shots));
     const outputs = await generateVideos(root, { mock: true, concurrency: 2, resume: false, root });
     expect(outputs).toHaveLength(1);
-    expect(outputs[0]).toContain('take-video-1:done');
-    await expect(readFile(join(root, 'assets', 'videos', 'shot-001.mp4'), 'utf8')).resolves.toContain('mock://');
+    expect(outputs[0]).toMatchObject({ shotId: 'shot-001', status: 'done' });
+    expect(outputs[0]?.assetPath).toContain('shot-001.mp4');
+    await expect(fs.readFile(join(root, 'assets', 'videos', 'shot-001.mp4'), 'utf8')).resolves.toContain('mock://');
     await rm(root, { recursive: true, force: true });
   });
 });

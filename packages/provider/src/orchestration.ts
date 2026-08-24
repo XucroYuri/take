@@ -23,6 +23,15 @@ export interface BatchGenerateOptions {
   root: string;
 }
 
+/** Per-shot outcome: maps a job back to the shot and its asset on disk. */
+export interface GenerateResult {
+  shotId: string;
+  jobId?: string;
+  status: 'done' | 'failed' | 'cancelled' | 'skipped';
+  assetPath?: string;
+  error?: string;
+}
+
 async function loadStoryboard(cwd: string): Promise<Storyboard> {
   const raw = await readFile(projectPaths(cwd).shots, 'utf8');
   return JSON.parse(raw) as Storyboard;
@@ -50,40 +59,48 @@ async function completedHashes(root: string): Promise<Set<string>> {
   return completed;
 }
 
-async function runBatch(
-  jobs: JobSpec[],
-  options: { concurrency: number; root: string },
-): Promise<Array<{ id: string; status: string; error?: string }>> {
+interface BatchJob {
+  spec: JobSpec;
+  meta: { shotId: string; assetPath: string };
+}
+
+async function runBatch(jobs: BatchJob[], options: { concurrency: number; root: string }): Promise<GenerateResult[]> {
   const log = new JobEventLog({ root: options.root });
   await log.load();
   const registry = new JobRegistry({ persist: (event) => log.append(event) });
-  const results: Array<{ id: string; status: string; error?: string }> = [];
+  const results: GenerateResult[] = [];
 
   let cursor = 0;
   const worker = async () => {
     while (true) {
-      const job = jobs[cursor];
-      if (job === undefined) return;
+      const batchJob = jobs[cursor];
+      if (batchJob === undefined) return;
       cursor += 1;
+      const { spec, meta } = batchJob;
       try {
-        const id = await registry.start(job);
-        const terminal = await registry.wait(id, 30 * 60 * 1000);
-        const entry: { id: string; status: string; error?: string } = { id, status: terminal.status };
-        if (terminal.error !== undefined) entry.error = terminal.error;
-        results.push(entry);
+        const jobId = await registry.start(spec);
+        const terminal = await registry.wait(jobId, 30 * 60 * 1000);
+        const result: GenerateResult = {
+          shotId: meta.shotId,
+          jobId,
+          status: terminal.status === 'done' ? 'done' : terminal.status === 'cancelled' ? 'cancelled' : 'failed',
+          assetPath: meta.assetPath,
+        };
+        if (terminal.error !== undefined) result.error = terminal.error;
+        results.push(result);
       } catch (error) {
-        const entry: { id: string; status: string; error?: string } = { id: job.kind, status: 'failed' };
-        entry.error = String(error);
-        results.push(entry);
+        const result: GenerateResult = { shotId: meta.shotId, status: 'failed', assetPath: meta.assetPath };
+        result.error = String(error);
+        results.push(result);
       }
     }
   };
-  await Promise.all(Array.from({ length: options.concurrency }, () => worker()));
+  await Promise.all(Array.from({ length: options.concurrency || 2 }, () => worker()));
   return results;
 }
 
 /** Generate images (storyboard stills) for all approved shots. */
-export async function generateImages(cwd: string, options: BatchGenerateOptions): Promise<string[]> {
+export async function generateImages(cwd: string, options: BatchGenerateOptions): Promise<GenerateResult[]> {
   const storyboard = await loadStoryboard(cwd);
   const paths = projectPaths(cwd);
   const root = options.root;
@@ -96,28 +113,35 @@ export async function generateImages(cwd: string, options: BatchGenerateOptions)
   const shotList = storyboard.shots.filter((s) => s.status === 'approved' || s.status === 'draft');
   const completed = options.resume ? await completedHashes(root) : new Set<string>();
 
-  const jobs: JobSpec[] = [];
+  const jobs: BatchJob[] = [];
+  const skipped: GenerateResult[] = [];
   for (const shot of shotList) {
     const hash = inputHash(shot.imagePrompt, 'gpt-image');
-    if (options.resume && completed.has(hash)) continue;
-    const filename = `${shot.id}.png`;
+    const assetPath = join(paths.assetsImages, `${shot.id}.png`);
+    if (options.resume && completed.has(hash)) {
+      skipped.push({ shotId: shot.id, status: 'skipped', assetPath });
+      continue;
+    }
     jobs.push({
-      kind: 'take-image',
-      owner: root,
-      run: async () => {
-        const { result } = await router.generateImage({ prompt: shot.imagePrompt });
-        await writeFile(join(paths.assetsImages, filename), `# ${result.url}\n`, 'utf8');
-        return { value: { url: result.url, inputHash: hash } };
+      meta: { shotId: shot.id, assetPath },
+      spec: {
+        kind: 'take-image',
+        owner: root,
+        run: async () => {
+          const { result } = await router.generateImage({ prompt: shot.imagePrompt });
+          await writeFile(assetPath, `# ${result.url}\n`, 'utf8');
+          return { value: { url: result.url, inputHash: hash } };
+        },
       },
     });
   }
 
   const results = await runBatch(jobs, { concurrency: options.concurrency || 2, root });
-  return results.map((r) => `${r.id}:${r.status}`);
+  return [...results, ...skipped];
 }
 
 /** Generate videos for approved shots (using first-frame stills when present). */
-export async function generateVideos(cwd: string, options: BatchGenerateOptions): Promise<string[]> {
+export async function generateVideos(cwd: string, options: BatchGenerateOptions): Promise<GenerateResult[]> {
   const storyboard = await loadStoryboard(cwd);
   const paths = projectPaths(cwd);
   const root = options.root;
@@ -130,23 +154,30 @@ export async function generateVideos(cwd: string, options: BatchGenerateOptions)
   const shotList = storyboard.shots.filter((s) => s.status === 'approved' || s.status === 'draft');
   const completed = options.resume ? await completedHashes(root) : new Set<string>();
 
-  const jobs: JobSpec[] = [];
+  const jobs: BatchJob[] = [];
+  const skipped: GenerateResult[] = [];
   for (const shot of shotList) {
     const prompt = shot.videoPrompt ?? shot.imagePrompt;
     const hash = inputHash(prompt, 'seedance');
-    if (options.resume && completed.has(hash)) continue;
-    const filename = `${shot.id}.mp4`;
+    const assetPath = join(paths.assetsVideos, `${shot.id}.mp4`);
+    if (options.resume && completed.has(hash)) {
+      skipped.push({ shotId: shot.id, status: 'skipped', assetPath });
+      continue;
+    }
     jobs.push({
-      kind: 'take-video',
-      owner: root,
-      run: async () => {
-        const { result } = await router.generateVideo({ prompt });
-        await writeFile(join(paths.assetsVideos, filename), `# ${result.url}\n`, 'utf8');
-        return { value: { url: result.url, inputHash: hash } };
+      meta: { shotId: shot.id, assetPath },
+      spec: {
+        kind: 'take-video',
+        owner: root,
+        run: async () => {
+          const { result } = await router.generateVideo({ prompt });
+          await writeFile(assetPath, `# ${result.url}\n`, 'utf8');
+          return { value: { url: result.url, inputHash: hash } };
+        },
       },
     });
   }
 
   const results = await runBatch(jobs, { concurrency: options.concurrency || 2, root });
-  return results.map((r) => `${r.id}:${r.status}`);
+  return [...results, ...skipped];
 }

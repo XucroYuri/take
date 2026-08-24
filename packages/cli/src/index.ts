@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { findProjectRoot } from '@take-ai/core';
+import type { GenerateResult } from '@take-ai/provider';
 import { Command } from 'commander';
 import { doctor } from './commands/doctor.js';
 import { exportStoryboard, importStoryboard } from './commands/export.js';
@@ -12,6 +14,18 @@ program
   .name('take')
   .description('Take your script to the screen. Agent-first storyboard & AI film production toolkit.')
   .version('0.1.0');
+
+/**
+ * Resolve the enclosing take project root, or exit with a diagnosis.
+ * Walking up lets every command run from any subdirectory of a project.
+ */
+function requireProject(): string {
+  const root = findProjectRoot(process.cwd());
+  if (root !== undefined) return root;
+  console.error(`✗ no take project found (looked for take.config.json / shots.json upward from ${process.cwd()})`);
+  console.error('  run `take init <name>` to create one, or cd into an existing project directory.');
+  process.exit(1);
+}
 
 program
   .command('init')
@@ -29,7 +43,8 @@ program
   .argument('[file]', 'file to validate (default: shots.json)')
   .option('-c, --config', 'validate take.config.json instead')
   .action(async (file: string | undefined, opts: { config?: boolean }) => {
-    const outcome = opts.config ? await validateConfig(process.cwd()) : await validateFile(file, process.cwd());
+    const projectRoot = requireProject();
+    const outcome = opts.config ? await validateConfig(projectRoot) : await validateFile(file, projectRoot);
     for (const issue of outcome.issues) console.log(`✗ ${issue.path}: ${issue.message}`);
     for (const warning of outcome.warnings) console.log(`! ${warning}`);
     if (outcome.ok && outcome.warnings.length === 0) console.log(`✓ ${outcome.path} is valid`);
@@ -44,28 +59,36 @@ program
   .option('--resume', 'skip shots whose input hash matches a completed job')
   .option('-c, --concurrency <n>', 'parallel jobs (default 2)', '2')
   .action(async (stage: string, opts: { mock?: boolean; resume?: boolean; concurrency?: string }) => {
+    const projectRoot = requireProject();
     const generateOptions: {
       mock: boolean;
       resume: boolean;
       concurrency: number;
       root: string;
-    } = { mock: false, resume: false, concurrency: Number(opts.concurrency), root: process.cwd() };
+    } = { mock: false, resume: false, concurrency: Number(opts.concurrency), root: projectRoot };
     if (opts.mock === true) generateOptions.mock = true;
     if (opts.resume === true) generateOptions.resume = true;
-    const outputs =
+    const results: GenerateResult[] =
       stage === 'video'
         ? await generateVideos(process.cwd(), generateOptions)
         : await generateImages(process.cwd(), generateOptions);
-    console.log(`✓ generated ${outputs.length} ${stage} job(s)`);
-    for (const out of outputs) console.log(`  ${out}`);
+    const done = results.filter((r) => r.status === 'done');
+    const skipped = results.filter((r) => r.status === 'skipped');
+    const failed = results.filter((r) => r.status !== 'done' && r.status !== 'skipped');
+    console.log(`✓ ${stage}: ${done.length} done, ${skipped.length} skipped (resume), ${failed.length} failed`);
+    for (const r of done) console.log(`  ✓ ${r.shotId} → ${r.assetPath ?? ''}`);
+    for (const r of skipped) console.log(`  ○ ${r.shotId} skipped (unchanged input)`);
+    for (const r of failed) console.log(`  ✗ ${r.shotId} ${r.status}${r.error ? ` — ${r.error}` : ''}`);
+    if (failed.length > 0) process.exit(1);
   });
 
 program
   .command('jobs')
   .description('list background jobs from the .take/jobs.json event log')
   .action(async () => {
+    const projectRoot = requireProject();
     const { JobEventLog } = await import('@take-ai/provider');
-    const log = new JobEventLog({ root: process.cwd() });
+    const log = new JobEventLog({ root: projectRoot });
     await log.load();
     const events = log.all();
     if (events.length === 0) {
@@ -88,11 +111,12 @@ program
   .description('export shots.json → storyboard.md, or import the reverse')
   .argument('<direction>', 'storyboard (export) | import')
   .action(async (direction: string) => {
+    const projectRoot = requireProject();
     if (direction === 'storyboard') {
-      const target = await exportStoryboard(process.cwd());
+      const target = await exportStoryboard(projectRoot);
       console.log(`✓ storyboard written to ${target}`);
     } else if (direction === 'import') {
-      const target = await importStoryboard(process.cwd());
+      const target = await importStoryboard(projectRoot);
       console.log(`✓ shots.json written to ${target}`);
     } else {
       console.error(`unknown export direction: ${direction} (use storyboard | import)`);
