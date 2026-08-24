@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "providers": {
+    "image": [
+      {
+        "id": "gpt-image",
+        "adapter": "gpt-image",
+        "apiKeyEnv": "TAKE_IMAGE_API_KEY",
+        "model": "gpt-image-2"
+      }
+    ],
+    "video": [
+      {
+        "id": "seedance",
+        "adapter": "seedance",
+        "apiKeyEnv": "TAKE_VIDEO_API_KEY",
+        "model": "seedance-2.5"
+      },
+      {
+        "id": "minimax",
+        "adapter": "minimax",
+        "apiKeyEnv": "TAKE_FALLBACK_VIDEO_API_KEY",
+        "model": "minimax-h3"
+      }
+    ]
+  },
+  "runtime": {
+    "concurrency": 2
+  }
+}
