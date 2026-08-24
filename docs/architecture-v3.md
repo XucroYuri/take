@@ -65,17 +65,17 @@ class JobRegistry {
 
 ## 五、迁移路径
 
-| 阶段 | 内容 | 对齐点 |
-|---|---|---|
-| P0 | 目录重构 + errors.ts + seam.ts 三角色划分 | 范式 1、2 |
-| P1 | transport（重试策略独立/限流/超时分级/attribution） | 范式 3 |
-| P2 | OpenAICompatibleAdapter 通用化（五职责）+ 同步/异步识别 | 范式 4 |
-| P3 | jobs.ts + .take/jobs.json + CLI/MCP 接线 | 范式 5 |
-| P4 | capabilities 元数据 + 预校验 | dsh resolveModelInfo |
-| P5 | 配置 v2 + v1 自动迁移 | 范式 6 |
-| P6 | retry 执行器独立接线 | 范式 3 完成态 |
-| P7 | 工程范式（AGENTS.md/Agent Note/invariant） | dsh 工程纪律 |
-| P8 | take-dsh 适配层（未来） | 方向 C 终局 |
+| 阶段 | 内容 | 对齐点 | 状态 |
+|---|---|---|---|
+| P0 | 目录重构 + errors.ts + seam.ts 三角色划分 | 范式 1、2 | ✅ |
+| P1 | transport（重试策略独立/限流/超时分级/attribution） | 范式 3 | ✅ |
+| P2 | OpenAICompatibleAdapter 通用化（五职责）+ 同步/异步识别 | 范式 4 | ✅ |
+| P3 | jobs.ts + .take/jobs.json + CLI/MCP 接线 | 范式 5 | ✅ |
+| P4 | capabilities 元数据 + 预校验 | dsh resolveModelInfo | ✅ |
+| P5 | 配置 v2 + v1 自动迁移 | 范式 6 | ✅ |
+| P6 | retry 执行器独立接线 | 范式 3 完成态 | ✅ |
+| P7 | 工程范式（AGENTS.md/Agent Note/invariant） | dsh 工程纪律 | ✅ |
+| P8 | take-dsh 适配层（未来） | 方向 C 终局 | ⏳ 等真实使用验证收敛 |
 
 ## 六、与 dsh 的边界（红线）
 
